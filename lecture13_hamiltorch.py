@@ -24,8 +24,11 @@ def log_prob_scaledInvGamma(nu, sSquare, theta):
 class LinearRegressionModel(torch.nn.Module):
 
     def __init__(self, p):
+        m = p // 2
         super().__init__()
-        self.linear1 = torch.nn.Linear(p, 1, bias = False) # beta
+        self.linear = torch.nn.Linear(p, m, bias = True)
+        self.beta = torch.nn.Parameter(torch.randn(m))
+        self.tau = torch.nn.Parameter(torch.randn(1))
         self.sigmaSquared_noise_unconstrained = torch.nn.parameter.Parameter(torch.rand(1)) # sigmasquare
         
         self.all_transforms = {}
@@ -33,8 +36,11 @@ class LinearRegressionModel(torch.nn.Module):
         
 
     def forward(self, x):
-        y = self.linear1(x)
-        return y.squeeze()
+        linear_output = self.linear(x) 
+        activated_output = torch.relu(linear_output) 
+        beta_output = torch.matmul(activated_output, self.beta)
+        final_output = beta_output + self.tau
+        return final_output
 
 
     def getLogLikelihood(self, name_to_params, mean_predictions, y):
@@ -142,7 +148,7 @@ pyro.infer.mcmc.util.print_summary(samples_as_tensor, prob=0.9, group_by_chain=T
 color_list = ["b", "g"]
 
 for chain_id in range(len(color_list)):
-    beta_samples = all_samples[chain_id]["linear1.weight"]
+    beta_samples = all_samples[chain_id]["linear.weight"]
     plt.scatter(beta_samples[:,0], beta_samples[:,2], color = color_list[chain_id], alpha=0.5)
 
 plt.xlabel("beta[0]")
@@ -150,16 +156,16 @@ plt.ylabel("beta[2]")
 plt.show()
 
 # ******** plot of samples from marginal posteriors of beta[j], for j = 1..p  ***********
-beta_samples = all_samples[0]["linear1.weight"]
+beta_samples = all_samples[0]["linear.weight"]
 
 print("beta_samples = ", beta_samples)
 print(beta_samples.shape)
 
 for chain_id in range(len(color_list)):
-    beta_samples_2 = all_samples_2[chain_id]["linear1.weight"]
+    beta_samples_2 = all_samples_2[chain_id]["linear.weight"]
     plt.scatter(beta_samples_2[:,0], beta_samples_2[:,2], color = color_list[chain_id], alpha=0.5)
 
-beta_samples_2 = all_samples_2[0]["linear1.weight"]
+beta_samples_2 = all_samples_2[0]["linear.weight"]
 
 print("beta_samples = ", beta_samples_2)
 print(beta_samples_2.shape)
@@ -169,12 +175,12 @@ fig, axs = plt.subplots(1, p)
 for j in range(p):
     axs[j].hist(beta_samples[:,j], bins=n_bins)
     axs[j].set_title(f"beta[{j}]")
-    # axs[j].hist(beta_samples_2[:,j], bins=n_bins)
-    # axs[j].set_title(f"beta[{j}]")
 plt.show()
 
-# Increasing the number of samples from 1000 to 2000 per chain generally improves the quality of the posterior samples 
+# Increasing the number of samples from 1000 to 2000 per chain improves the quality of the posterior samples 
 # by reducing Monte Carlo error.
 # With more samples, the effect of autocorrelation is mitigated, and the effective sample size (ESS) increases, 
 # leading to more independent samples from the posterior.
-# The r_hat for both of the chains is close to 1, which indicates that the chains have converged to the same stationary distribution.
+# The r_hat for both chain is more than 1.1, which indicates that the chains have not converged yet.
+
+
