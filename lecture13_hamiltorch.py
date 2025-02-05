@@ -94,6 +94,7 @@ y = torch.from_numpy(y).float()
 
 
 NUM_SAMPLES_TOTAL = 1000  # number of MCMC samples
+NUM_SAMPLES_2 = 2000
 
 # Parameters for Hamiltorch:
 STEP_SIZE = 0.01
@@ -102,6 +103,7 @@ SAMPLER=hamiltorch.Sampler.HMC_NUTS
 INTEGRATOR=hamiltorch.Integrator.IMPLICIT
 
 all_samples = []
+all_samples_2 = []
 
 for chainId in range(2):
     mcmc_utils.set_seeds(chainId) # use different seeds for each chain in order to create different initial values of the parameters
@@ -111,17 +113,29 @@ for chainId in range(2):
 
     print("initial_parameters = ", initial_parameters)
     log_prob_func = mcmc_utils.get_log_prob_func(model, X, y) # this creates the log-joint probability as a function of the parameters theta
-    all_samples_one_chain = hamiltorch.sample(log_prob_func=log_prob_func,burn = int(0.5 * NUM_SAMPLES_TOTAL),params_init=initial_parameters,  num_samples=NUM_SAMPLES_TOTAL, step_size=STEP_SIZE, num_steps_per_sample=NUM_STEPS_PER_SAMPLE, sampler=SAMPLER, integrator=INTEGRATOR)
+    all_samples_one_chain = hamiltorch.sample(log_prob_func=log_prob_func,burn = int(0.5 * NUM_SAMPLES_TOTAL),params_init=initial_parameters,  
+                                                num_samples=NUM_SAMPLES_TOTAL, step_size=STEP_SIZE, num_steps_per_sample=NUM_STEPS_PER_SAMPLE, 
+                                                sampler=SAMPLER, integrator=INTEGRATOR)
     
     all_samples_one_chain_dict = mcmc_utils.get_samples_as_dict_and_transform(model, all_samples_one_chain)
 
     all_samples.append(all_samples_one_chain_dict)
 
+    samples_one_chain = hamiltorch.sample(log_prob_func=log_prob_func,burn = int(0.5 * NUM_SAMPLES_2),params_init=initial_parameters,  
+                                                num_samples=NUM_SAMPLES_2, step_size=STEP_SIZE, num_steps_per_sample=NUM_STEPS_PER_SAMPLE, 
+                                                sampler=SAMPLER, integrator=INTEGRATOR)
+    
+    samples_one_chain_dict = mcmc_utils.get_samples_as_dict_and_transform(model, samples_one_chain)
+
+    all_samples_2.append(samples_one_chain_dict)
+
 
 all_samples_as_tensor = mcmc_utils.merge_chains_as_tensor(all_samples)
+samples_as_tensor = mcmc_utils.merge_chains_as_tensor(all_samples_2)
 
 # print out statistics of the posterior for each parameters and also the MCMC diagnostics n-eff and R-hat
 pyro.infer.mcmc.util.print_summary(all_samples_as_tensor, prob=0.9, group_by_chain=True)
+pyro.infer.mcmc.util.print_summary(samples_as_tensor, prob=0.9, group_by_chain=True)
 
 
 # ******** plot of samples from joint posterior (beta[0], beta[1]) ***********
@@ -141,10 +155,26 @@ beta_samples = all_samples[0]["linear1.weight"]
 print("beta_samples = ", beta_samples)
 print(beta_samples.shape)
 
+for chain_id in range(len(color_list)):
+    beta_samples_2 = all_samples_2[chain_id]["linear1.weight"]
+    plt.scatter(beta_samples_2[:,0], beta_samples_2[:,2], color = color_list[chain_id], alpha=0.5)
+
+beta_samples_2 = all_samples_2[0]["linear1.weight"]
+
+print("beta_samples = ", beta_samples_2)
+print(beta_samples_2.shape)
+
 n_bins = 30
 fig, axs = plt.subplots(1, p)
 for j in range(p):
     axs[j].hist(beta_samples[:,j], bins=n_bins)
     axs[j].set_title(f"beta[{j}]")
+    # axs[j].hist(beta_samples_2[:,j], bins=n_bins)
+    # axs[j].set_title(f"beta[{j}]")
 plt.show()
 
+# Increasing the number of samples from 1000 to 2000 per chain generally improves the quality of the posterior samples 
+# by reducing Monte Carlo error.
+# With more samples, the effect of autocorrelation is mitigated, and the effective sample size (ESS) increases, 
+# leading to more independent samples from the posterior.
+# The r_hat for both of the chains is close to 1, which indicates that the chains have converged to the same stationary distribution.
